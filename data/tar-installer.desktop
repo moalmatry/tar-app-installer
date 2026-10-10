@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Tar App Installer
+GenericName=Archive Application Installer
+Comment=Extract and install .tar.gz and archive applications into your desktop apps menu
+Exec=tar-installer-gui %U
+Icon=tar-installer
+Terminal=false
+StartupNotify=true
+Categories=Utility;System;PackageManager;
+MimeType=application/gzip;application/x-tar;application/x-compressed-tar;application/x-bzip-compressed-tar;application/x-xz-compressed-tar;application/zip;
+Keywords=tar;gz;installer;extract;app;package;archive;zip;

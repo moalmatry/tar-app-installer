@@ -1,0 +1,52 @@
+[project]
+name = "tar-app-installer"
+version = "0.1.0"
+description = "Extract and automatically install .tar.gz, .tgz, .tar.xz, and .zip applications into your Linux apps menu and desktop environment."
+authors = [
+    { name = "moalmatry", email = "moalmatry2000@gmail.com" }
+]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = [
+    "tar",
+    "tar-gz",
+    "installer",
+    "desktop-installer",
+    "linux-apps",
+    "portable-apps",
+    "archive-extractor",
+    "package-manager",
+    "gtk3",
+    "zorin-os",
+    "ubuntu",
+]
+classifiers = [
+    "Environment :: X11 Applications :: GTK",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: System :: Archiving :: Packaging",
+    "Topic :: System :: Installation/Setup",
+    "Topic :: Desktop Environment :: Gnome",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/moalmatry/tar-app-installer"
+Repository = "https://github.com/moalmatry/tar-app-installer"
+Issues = "https://github.com/moalmatry/tar-app-installer/issues"
+
+[project.scripts]
+tar-installer = "tar_installer.cli.main:main"
+tar-installer-gui = "tar_installer.gui.app:main"
+
+[tool.poetry]
+packages = [{ include = "tar_installer", from = "src" }]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
