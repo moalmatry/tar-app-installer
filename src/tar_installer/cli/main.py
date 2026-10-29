@@ -62,7 +62,15 @@ def cmd_install(args: argparse.Namespace):
         final_slug = clean_slug(args.name or detected.slug)
         final_version = args.version or detected.version
         final_exec = args.exec or detected.selected_exec
-        final_icon = args.icon or detected.selected_icon
+        custom_icon: str | None = None
+        final_icon: str | None = None
+        if args.icon:
+            if Path(args.icon).is_file():
+                custom_icon = str(Path(args.icon).resolve())
+            else:
+                final_icon = args.icon
+        else:
+            final_icon = detected.selected_icon
         final_categories = [args.category] if args.category else detected.categories
         system_wide = bool(args.system)
 
@@ -83,7 +91,7 @@ def cmd_install(args: argparse.Namespace):
         print(f"  Slug:        {final_slug}")
         print(f"  Version:     {final_version}")
         print(f"  Binary:      {final_exec}")
-        print(f"  Icon:        {final_icon or '(Will generate clean vector icon)'}")
+        print(f"  Icon:        {custom_icon or final_icon or '(Will generate clean vector icon)'}")
         print(f"  Category:    {', '.join(final_categories)}")
         print(f"  Scope:       {'System-wide (/opt)' if system_wide else 'User (~/.local/share/tar-apps)'}")
         print("=" * 55 + "\n")
@@ -105,6 +113,7 @@ def cmd_install(args: argparse.Namespace):
             categories=final_categories,
             exec_rel_path=final_exec,
             icon_rel_path=final_icon,
+            custom_icon_path=custom_icon,
             system_wide=system_wide,
             terminal=args.terminal or detected.terminal,
         )

@@ -91,6 +91,17 @@ window {
     border-radius: 8px;
     padding: 12px;
 }
+.btn-secondary {
+    background-color: #f1f5f9;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+}
+.btn-secondary:hover {
+    background-color: #e2e8f0;
+}
 """
 
 
@@ -126,6 +137,7 @@ class TarInstallerWindow(Gtk.Window):
         self.current_archive: Path | None = None
         self.detected_app: DetectedApp | None = None
         self.selected_icon_path: str | None = None
+        self.custom_icon_path: str | None = None
         self.last_installed_app: InstalledApp | None = None
 
         # Build UI
@@ -248,9 +260,17 @@ class TarInstallerWindow(Gtk.Window):
 
         # Top row: Icon + App Name
         row_top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+
+        col_icon = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.img_icon_preview = Gtk.Image()
         self.img_icon_preview.set_size_request(64, 64)
-        row_top.pack_start(self.img_icon_preview, False, False, 0)
+        col_icon.pack_start(self.img_icon_preview, False, False, 0)
+
+        self.btn_change_icon = Gtk.Button(label="Change...")
+        self.btn_change_icon.get_style_context().add_class("btn-secondary")
+        self.btn_change_icon.connect("clicked", self._on_change_icon_clicked)
+        col_icon.pack_start(self.btn_change_icon, False, False, 0)
+        row_top.pack_start(col_icon, False, False, 0)
 
         col_name = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         lbl_field_name = Gtk.Label(label="Application Name:", xalign=0.0)
@@ -459,6 +479,7 @@ class TarInstallerWindow(Gtk.Window):
 
         # Icon Preview
         self.selected_icon_path = detected.selected_icon
+        self.custom_icon_path = None
         self._update_icon_display()
 
         self._show_section(self.card_meta)
@@ -477,12 +498,149 @@ class TarInstallerWindow(Gtk.Window):
         dialog.destroy()
 
     def _on_name_changed(self, _entry):
-        if not self.selected_icon_path:
+        if not self.selected_icon_path and not self.custom_icon_path:
             self._update_icon_display()
+
+    def _on_change_icon_clicked(self, _button):
+        dialog = Gtk.Dialog(
+            title="Select Application Icon",
+            parent=self,
+            flags=Gtk.DialogFlags.MODAL | Gtk.DialogFlags.DESTROY_WITH_PARENT,
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_APPLY, Gtk.ResponseType.APPLY,
+        )
+        dialog.set_default_size(440, 480)
+
+        content = dialog.get_content_area()
+        content.set_spacing(12)
+        content.set_border_width(12)
+
+        candidates = self.detected_app.candidates_icon if self.detected_app else []
+        selected_custom: list[str | None] = [None]
+
+        lbl_cand = Gtk.Label(label="<b>Detected icons in package:</b>", use_markup=True, xalign=0.0)
+        content.pack_start(lbl_cand, False, False, 0)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_min_content_height(240)
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+
+        listbox = Gtk.ListBox()
+        listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        scrolled.add(listbox)
+        content.pack_start(scrolled, True, True, 0)
+
+        cand_rows: list[tuple[Gtk.ListBoxRow, str]] = []
+        if candidates and self.temp_dir:
+            for c in candidates:
+                row = Gtk.ListBoxRow()
+                row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+                row_box.set_border_width(6)
+
+                img = Gtk.Image()
+                full_cand_path = Path(self.temp_dir.name) / c.rel_path
+                if full_cand_path.is_file():
+                    try:
+                        pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(full_cand_path), 40, 40, True)
+                        img.set_from_pixbuf(pb)
+                    except Exception:
+                        img.set_from_icon_name("image-x-generic", Gtk.IconSize.LARGE_TOOLBAR)
+                else:
+                    img.set_from_icon_name("image-x-generic", Gtk.IconSize.LARGE_TOOLBAR)
+                row_box.pack_start(img, False, False, 0)
+
+                col_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+                cand_name = Path(c.rel_path).name
+                lbl_name = Gtk.Label(label=f"<b>{cand_name}</b>", use_markup=True, xalign=0.0)
+                dim_str = f"{c.width}x{c.height}" if c.width > 0 else ("Vector" if c.format == "svg" else "")
+                lbl_sub = Gtk.Label(label=f"{c.format.upper()} {dim_str} • {c.rel_path}", xalign=0.0)
+                lbl_sub.get_style_context().add_class("app-subtext")
+                col_info.pack_start(lbl_name, False, False, 0)
+                col_info.pack_start(lbl_sub, False, False, 0)
+                row_box.pack_start(col_info, True, True, 0)
+
+                row.add(row_box)
+                listbox.add(row)
+                cand_rows.append((row, c.rel_path))
+
+                if self.selected_icon_path == c.rel_path and not self.custom_icon_path:
+                    listbox.select_row(row)
+        else:
+            lbl_none = Gtk.Label(label="No icons found inside package archive.", xalign=0.0)
+            lbl_none.get_style_context().add_class("app-subtext")
+            listbox.add(lbl_none)
+
+        def on_row_activated(_lb, row):
+            for r, r_path in cand_rows:
+                if r == row:
+                    self.selected_icon_path = r_path
+                    self.custom_icon_path = None
+                    self._update_icon_display()
+                    dialog.response(Gtk.ResponseType.APPLY)
+                    return
+
+        listbox.connect("row-activated", on_row_activated)
+
+        btn_browse_img = Gtk.Button(label="📁 Browse Custom Image File...")
+        content.pack_start(btn_browse_img, False, False, 0)
+
+        def on_browse_file(_btn):
+            file_diag = Gtk.FileChooserDialog(
+                title="Select Custom Icon Image",
+                parent=dialog,
+                action=Gtk.FileChooserAction.OPEN,
+            )
+            file_diag.add_buttons(
+                Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                Gtk.STOCK_OPEN, Gtk.ResponseType.OK,
+            )
+            filt = Gtk.FileFilter()
+            filt.set_name("Images (*.png, *.svg, *.ico, *.jpg, *.webp)")
+            for pat in ("*.png", "*.svg", "*.ico", "*.jpg", "*.jpeg", "*.webp"):
+                filt.add_pattern(pat)
+            file_diag.add_filter(filt)
+            all_filt = Gtk.FileFilter()
+            all_filt.set_name("All Files")
+            all_filt.add_pattern("*")
+            file_diag.add_filter(all_filt)
+
+            if file_diag.run() == Gtk.ResponseType.OK:
+                sel = file_diag.get_filename()
+                if sel and Path(sel).is_file():
+                    selected_custom[0] = sel
+                    file_diag.destroy()
+                    dialog.response(Gtk.ResponseType.APPLY)
+                    return
+            file_diag.destroy()
+
+        btn_browse_img.connect("clicked", on_browse_file)
+
+        content.show_all()
+        res = dialog.run()
+
+        if res == Gtk.ResponseType.APPLY:
+            if selected_custom[0]:
+                self.custom_icon_path = selected_custom[0]
+                self.selected_icon_path = None
+            else:
+                sel_row = listbox.get_selected_row()
+                if sel_row:
+                    for r, r_path in cand_rows:
+                        if r == sel_row:
+                            self.selected_icon_path = r_path
+                            self.custom_icon_path = None
+                            break
+            self._update_icon_display()
+
+        dialog.destroy()
 
     def _update_icon_display(self):
         icon_path = None
-        if self.selected_icon_path and self.temp_dir:
+        if self.custom_icon_path and Path(self.custom_icon_path).is_file():
+            icon_path = Path(self.custom_icon_path)
+        elif self.selected_icon_path and self.temp_dir:
             full_path = Path(self.temp_dir.name) / self.selected_icon_path
             if full_path.is_file():
                 icon_path = full_path
@@ -529,6 +687,7 @@ class TarInstallerWindow(Gtk.Window):
             categories=[app_cat],
             exec_rel_path=chosen_exec,
             icon_rel_path=self.selected_icon_path,
+            custom_icon_path=self.custom_icon_path,
             terminal=terminal,
             system_wide=system_wide,
         )

@@ -16,10 +16,10 @@ def clean_app_name(raw_name: str) -> str:
         if s.lower().endswith(ext):
             s = s[: -len(ext)]
 
-    # Strip arch / OS tags
+    # Strip arch / OS tags and version strings
     patterns = [
-        r"[-_](linux|ubuntu|debian|x86_64|amd64|x64|i386|i686|arm64|aarch64|portable|bin)",
-        r"[-_]v?\d+(\.\d+)*(-[a-zA-Z0-9]+)?$",  # version suffix
+        r"[-_](linux|ubuntu|debian|windows|darwin|macos|x86[-_]64|amd64|x64|x86|i386|i686|arm64|aarch64|portable|bin|appimage|tar|gz|zip)\b",
+        r"[-_]v?\d+(\.\d+)*(-[a-zA-Z0-9.]+)?\b",
     ]
     for p in patterns:
         s = re.sub(p, "", s, flags=re.IGNORECASE)
@@ -92,7 +92,8 @@ def detect_app(extract_dir: str | Path, source_archive_name: str = "") -> Detect
         inner_root_rel = ""
 
     # 2. Check for existing .desktop file
-    desktop_files = list(root_dir.glob("*.desktop")) + list(root_dir.glob("*/*.desktop"))
+    desktop_files = list(root_dir.rglob("*.desktop"))
+    desktop_files.sort(key=lambda p: len(p.relative_to(root_dir).parts))
     existing_desktop = desktop_files[0] if desktop_files else None
 
     # Initial name / slug / version guess
@@ -105,6 +106,7 @@ def detect_app(extract_dir: str | Path, source_archive_name: str = "") -> Detect
     app_terminal = False
     preferred_exec_name = None
     preferred_icon_name = None
+    preferred_icon_stem = None
 
     if existing_desktop and existing_desktop.is_file():
         try:
@@ -129,7 +131,9 @@ def detect_app(extract_dir: str | Path, source_archive_name: str = "") -> Detect
                     raw_exec = sec["Exec"].split()[0].strip("\"'")
                     preferred_exec_name = Path(raw_exec).name
                 if "Icon" in sec:
-                    preferred_icon_name = Path(sec["Icon"].strip("\"'")).name
+                    raw_icon = sec["Icon"].strip("\"'")
+                    preferred_icon_name = Path(raw_icon).name
+                    preferred_icon_stem = Path(raw_icon).stem
         except Exception:
             pass
 
@@ -241,31 +245,57 @@ def detect_app(extract_dir: str | Path, source_archive_name: str = "") -> Detect
         w, h = 0, 0
 
         if ext == ".svg":
-            score += 50
+            score += 75
             w, h = 512, 512
         elif ext == ".png":
             w, h = get_png_dimensions(p)
-            if w >= 256:
-                score += 40
+            if w == 0:
+                dim_match = re.search(r"(\d+)", stem_lower)
+                if dim_match:
+                    val = int(dim_match.group(1))
+                    if val in (16, 24, 32, 48, 64, 128, 256, 512, 1024):
+                        w, h = val, val
+            if w >= 512:
+                score += 65
+            elif w >= 256:
+                score += 55
             elif w >= 128:
-                score += 30
+                score += 45
             elif w >= 64:
+                score += 30
+            elif w >= 48:
                 score += 20
             elif w >= 32:
-                score += 10
+                score += 15
             else:
-                score -= 20
+                score += 5
+        elif ext == ".ico":
+            score += 5  # Lowest priority; Linux prefers PNG/SVG
+        elif ext == ".xpm":
+            score += 10
 
-        if preferred_icon_name and (name == preferred_icon_name or p.stem == preferred_icon_name):
-            score += 100
+        # Exact match with preferred icon from .desktop
+        if preferred_icon_name and (name == preferred_icon_name or p.stem == preferred_icon_name or (preferred_icon_stem and p.stem == preferred_icon_stem)):
+            score += 150
 
-        if stem_lower == app_slug or stem_lower == "icon" or stem_lower == "logo":
-            score += 40
+        # Name matches app_slug or standard icon terms
+        if stem_lower == app_slug or stem_lower == clean_slug(app_name):
+            score += 60
+        elif stem_lower in ("icon", "logo", "app"):
+            score += 45
+        elif re.search(r"(^|[-_])(logo|icon|app)([-_0-9]|$)", stem_lower):
+            score += 35
         elif app_slug in stem_lower:
-            score += 25
+            score += 30
 
-        # If in icons/ or assets/
-        if any(part in ("icons", "assets", "pixmaps", "images") for part in p.parts):
+        # Penalty for monochrome / inverted / tray / dark mode icons
+        if any(k in stem_lower for k in ("white", "black", "dark", "light", "mono", "symbolic", "tray", "badge", "indicator", "status")):
+            score -= 40
+
+        # Bonus for standard icon directories
+        if any(part in ("icons", "pixmaps", "assets", "img", "images", "res", "resources") for part in p.parts):
+            score += 20
+        if any(part in ("hicolor", "apps", "512x512", "256x256", "128x128", "scalable") for part in p.parts):
             score += 20
 
         candidate_icons.append(

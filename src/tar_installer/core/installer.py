@@ -69,17 +69,20 @@ class AppInstaller:
             install_base = Path("/opt")
             bin_dir = Path("/usr/local/bin")
             desktop_dir = Path("/usr/share/applications")
-            icons_dir = Path("/usr/share/icons/hicolor/scalable/apps")
+            pixmaps_dir = Path("/usr/share/pixmaps")
+            hicolor_base = Path("/usr/share/icons/hicolor")
         else:
             install_base = Path.home() / ".local" / "share" / "tar-apps"
             bin_dir = Path.home() / ".local" / "bin"
             desktop_dir = Path.home() / ".local" / "share" / "applications"
-            icons_dir = Path.home() / ".local" / "share" / "icons" / "hicolor/scalable/apps"
+            pixmaps_dir = Path.home() / ".local" / "share" / "pixmaps"
+            hicolor_base = Path.home() / ".local" / "share" / "icons" / "hicolor"
 
         app_install_dir = install_base / config.app_slug
         bin_dir.mkdir(parents=True, exist_ok=True)
         desktop_dir.mkdir(parents=True, exist_ok=True)
-        icons_dir.mkdir(parents=True, exist_ok=True)
+        pixmaps_dir.mkdir(parents=True, exist_ok=True)
+        (hicolor_base / "scalable" / "apps").mkdir(parents=True, exist_ok=True)
 
         # 2. Check if already installed; remove old version if upgrading
         if app_install_dir.exists():
@@ -144,30 +147,160 @@ class AppInstaller:
 
         # 6. Setup Icon
         final_icon_path: str | None = None
-        icon_rel = config.icon_rel_path
-        if detected.inner_root and icon_rel and icon_rel.startswith(f"{detected.inner_root}/"):
-            icon_rel = icon_rel[len(detected.inner_root) + 1 :]
+        source_icon: Path | None = None
 
         if config.custom_icon_path and Path(config.custom_icon_path).is_file():
-            custom_p = Path(config.custom_icon_path)
-            ext = custom_p.suffix.lower() or ".png"
-            dest_icon = icons_dir / f"{config.app_slug}{ext}"
-            shutil.copy2(custom_p, dest_icon)
-            final_icon_path = str(dest_icon)
-        elif icon_rel and (app_install_dir / icon_rel).is_file():
-            source_icon = app_install_dir / icon_rel
+            source_icon = Path(config.custom_icon_path)
+        elif config.icon_rel_path:
+            icon_rel = config.icon_rel_path
+            if detected.inner_root and icon_rel.startswith(f"{detected.inner_root}/"):
+                icon_rel = icon_rel[len(detected.inner_root) + 1 :]
+
+            candidate_paths = [
+                app_install_dir / icon_rel,
+                extracted_root / config.icon_rel_path,
+                extracted_root / icon_rel,
+                app_install_dir / Path(config.icon_rel_path).name,
+            ]
+            for cand in candidate_paths:
+                if cand.is_file():
+                    source_icon = cand
+                    break
+
+        if source_icon and source_icon.is_file():
             ext = source_icon.suffix.lower()
+
             if ext == ".svg":
-                dest_icon = icons_dir / f"{config.app_slug}.svg"
+                dest_pixmap = pixmaps_dir / f"{config.app_slug}.svg"
+                dest_hicolor = hicolor_base / "scalable" / "apps" / f"{config.app_slug}.svg"
+                dest_hicolor.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_icon, dest_pixmap)
+                shutil.copy2(source_icon, dest_hicolor)
+                try:
+                    os.chmod(dest_pixmap, 0o644)
+                    os.chmod(dest_hicolor, 0o644)
+                except OSError:
+                    pass
+                final_icon_path = str(dest_pixmap)
+            elif ext == ".ico":
+                # Convert ICO to PNG for Linux desktop environments
+                dest_pixmap = pixmaps_dir / f"{config.app_slug}.png"
+                converted = False
+                try:
+                    import gi
+                    gi.require_version("GdkPixbuf", "2.0")
+                    from gi.repository import GdkPixbuf
+                    pb = GdkPixbuf.Pixbuf.new_from_file(str(source_icon))
+                    pb.savev(str(dest_pixmap), "png", [], [])
+                    w, h = pb.get_width(), pb.get_height()
+                    size = w if w in (16, 24, 32, 48, 64, 128, 256, 512) else 256
+                    dest_hicolor = hicolor_base / f"{size}x{size}" / "apps" / f"{config.app_slug}.png"
+                    dest_hicolor.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(dest_pixmap, dest_hicolor)
+                    try:
+                        os.chmod(dest_pixmap, 0o644)
+                        os.chmod(dest_hicolor, 0o644)
+                    except OSError:
+                        pass
+                    final_icon_path = str(dest_pixmap)
+                    converted = True
+                except Exception:
+                    pass
+
+                if not converted:
+                    dest_pixmap = pixmaps_dir / f"{config.app_slug}.svg"
+                    dest_hicolor = hicolor_base / "scalable" / "apps" / f"{config.app_slug}.svg"
+                    dest_hicolor.parent.mkdir(parents=True, exist_ok=True)
+                    generate_fallback_svg_icon(config.app_name, dest_pixmap)
+                    shutil.copy2(dest_pixmap, dest_hicolor)
+                    try:
+                        os.chmod(dest_pixmap, 0o644)
+                        os.chmod(dest_hicolor, 0o644)
+                    except OSError:
+                        pass
+                    final_icon_path = str(dest_pixmap)
+            elif ext in (".png", ".xpm", ".jpg", ".jpeg", ".webp"):
+                dest_pixmap = pixmaps_dir / f"{config.app_slug}.png"
+                copied = False
+                if ext != ".png":
+                    try:
+                        import gi
+                        gi.require_version("GdkPixbuf", "2.0")
+                        from gi.repository import GdkPixbuf
+                        pb = GdkPixbuf.Pixbuf.new_from_file(str(source_icon))
+                        pb.savev(str(dest_pixmap), "png", [], [])
+                        copied = True
+                    except Exception:
+                        pass
+                if not copied:
+                    shutil.copy2(source_icon, dest_pixmap)
+
+                w, h = 0, 0
+                try:
+                    from .detector import get_png_dimensions
+                    w, h = get_png_dimensions(dest_pixmap)
+                except Exception:
+                    pass
+
+                if w <= 0:
+                    try:
+                        import gi
+                        gi.require_version("GdkPixbuf", "2.0")
+                        from gi.repository import GdkPixbuf
+                        pb = GdkPixbuf.Pixbuf.new_from_file(str(dest_pixmap))
+                        w, h = pb.get_width(), pb.get_height()
+                    except Exception:
+                        w, h = 256, 256
+
+                if w >= 512:
+                    size = 512
+                elif w >= 256:
+                    size = 256
+                elif w >= 128:
+                    size = 128
+                elif w >= 64:
+                    size = 64
+                elif w >= 48:
+                    size = 48
+                elif w >= 32:
+                    size = 32
+                elif w >= 24:
+                    size = 24
+                elif w >= 16:
+                    size = 16
+                else:
+                    size = 256
+
+                dest_hicolor = hicolor_base / f"{size}x{size}" / "apps" / f"{config.app_slug}.png"
+                dest_hicolor.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(dest_pixmap, dest_hicolor)
+                try:
+                    os.chmod(dest_pixmap, 0o644)
+                    os.chmod(dest_hicolor, 0o644)
+                except OSError:
+                    pass
+                final_icon_path = str(dest_pixmap)
             else:
-                dest_icon = icons_dir / f"{config.app_slug}{ext}"
-            shutil.copy2(source_icon, dest_icon)
-            final_icon_path = str(dest_icon)
+                dest_pixmap = pixmaps_dir / f"{config.app_slug}{ext}"
+                shutil.copy2(source_icon, dest_pixmap)
+                try:
+                    os.chmod(dest_pixmap, 0o644)
+                except OSError:
+                    pass
+                final_icon_path = str(dest_pixmap)
         else:
             # Generate fallback vector icon
-            dest_icon = icons_dir / f"{config.app_slug}.svg"
-            generate_fallback_svg_icon(config.app_name, dest_icon)
-            final_icon_path = str(dest_icon)
+            dest_pixmap = pixmaps_dir / f"{config.app_slug}.svg"
+            dest_hicolor = hicolor_base / "scalable" / "apps" / f"{config.app_slug}.svg"
+            dest_hicolor.parent.mkdir(parents=True, exist_ok=True)
+            generate_fallback_svg_icon(config.app_name, dest_pixmap)
+            shutil.copy2(dest_pixmap, dest_hicolor)
+            try:
+                os.chmod(dest_pixmap, 0o644)
+                os.chmod(dest_hicolor, 0o644)
+            except OSError:
+                pass
+            final_icon_path = str(dest_pixmap)
 
         # 7. Generate FreeDesktop .desktop entry
         categories_str = ";".join(config.categories)
@@ -177,8 +310,8 @@ class AppInstaller:
         terminal_str = "true" if config.terminal else "false"
         desktop_file_path = desktop_dir / f"{config.app_slug}.desktop"
 
-        # Determine icon reference for desktop file (icon name or absolute path)
-        icon_ref = config.app_slug if final_icon_path and "hicolor" in final_icon_path else (final_icon_path or config.app_slug)
+        # Explicit absolute path guarantees that all Linux file managers, docks, and app menus render the icon
+        icon_ref = final_icon_path or config.app_slug
 
         desktop_content = f"""[Desktop Entry]
 Version=1.0
@@ -203,9 +336,8 @@ Categories={categories_str}
         try:
             subprocess.run(["update-desktop-database", str(desktop_dir)], check=False, capture_output=True)
             if shutil.which("gtk-update-icon-cache"):
-                icon_parent = icons_dir.parent.parent.parent
-                if icon_parent.is_dir():
-                    subprocess.run(["gtk-update-icon-cache", "-q", "-t", str(icon_parent)], check=False, capture_output=True)
+                if hicolor_base.is_dir():
+                    subprocess.run(["gtk-update-icon-cache", "-q", "-t", str(hicolor_base)], check=False, capture_output=True)
         except Exception:
             pass
 

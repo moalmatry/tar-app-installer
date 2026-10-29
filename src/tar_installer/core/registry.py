@@ -136,12 +136,30 @@ class AppRegistry:
             except OSError as e:
                 errors.append(f"Desktop entry removal failed: {e}")
 
-        # 3. Remove icon if installed in icons folder
-        if app.icon_path and os.path.isfile(app.icon_path) and ("hicolor" in app.icon_path or "pixmaps" in app.icon_path):
+        # 3. Remove icon if installed
+        if app.icon_path and os.path.isfile(app.icon_path):
             try:
                 os.remove(app.icon_path)
             except OSError:
                 pass
+
+        # Also cleanup any matching icons across pixmaps and hicolor sizes
+        search_bases = [Path("/usr/share")] if system_wide else [Path.home() / ".local" / "share", Path("/usr/share")]
+        for base in search_bases:
+            for ext in (".png", ".svg", ".ico", ".xpm"):
+                pix_f = base / "pixmaps" / f"{app.id}{ext}"
+                if pix_f.is_file():
+                    try:
+                        pix_f.unlink()
+                    except OSError:
+                        pass
+            hicolor = base / "icons" / "hicolor"
+            if hicolor.is_dir():
+                for icon_f in hicolor.glob(f"*/apps/{app.id}.*"):
+                    try:
+                        icon_f.unlink()
+                    except OSError:
+                        pass
 
         # 4. Remove installation directory
         if app.install_dir and os.path.isdir(app.install_dir):
@@ -153,13 +171,13 @@ class AppRegistry:
         # 5. Remove from registry
         cls.unregister_app(app.id, system_wide=system_wide)
 
-        # 6. Update desktop database
+        # 6. Update desktop database and icon caches
         try:
-            desktop_dir = Path.home() / ".local" / "share" / "applications"
-            if desktop_dir.is_dir():
-                subprocess.run(["update-desktop-database", str(desktop_dir)], check=False, capture_output=True)
+            target_dt = Path("/usr/share/applications") if system_wide else Path.home() / ".local" / "share" / "applications"
+            if target_dt.is_dir():
+                subprocess.run(["update-desktop-database", str(target_dt)], check=False, capture_output=True)
             if shutil.which("gtk-update-icon-cache"):
-                icon_dir = Path.home() / ".local" / "share" / "icons" / "hicolor"
+                icon_dir = Path("/usr/share/icons/hicolor") if system_wide else Path.home() / ".local" / "share" / "icons" / "hicolor"
                 if icon_dir.is_dir():
                     subprocess.run(["gtk-update-icon-cache", "-q", "-t", str(icon_dir)], check=False, capture_output=True)
         except Exception:
