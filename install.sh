@@ -64,12 +64,14 @@ ln -sf "$VENV_PATH/bin/tar-installer-gui" "$HOME/.local/bin/tar-app-installer-gu
 # 4. Install Desktop Launcher and Icon
 echo "[4/5] Installing desktop launcher and app icon..."
 sudo mkdir -p /usr/local/share/applications /usr/local/share/icons/hicolor/scalable/apps
-sudo cp "$SCRIPT_DIR/data/tar-installer.desktop" /usr/local/share/applications/
+sudo cp "$SCRIPT_DIR/data/tar-installer.desktop" /usr/local/share/applications/tar-app-installer.desktop
+sudo rm -f /usr/local/share/applications/tar-installer.desktop
 sudo cp "$SCRIPT_DIR/data/icons/hicolor/scalable/apps/tar-installer.svg" /usr/local/share/icons/hicolor/scalable/apps/
 
 # Also copy to user local
 mkdir -p "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/scalable/apps"
-cp "$SCRIPT_DIR/data/tar-installer.desktop" "$HOME/.local/share/applications/"
+cp "$SCRIPT_DIR/data/tar-installer.desktop" "$HOME/.local/share/applications/tar-app-installer.desktop"
+rm -f "$HOME/.local/share/applications/tar-installer.desktop"
 cp "$SCRIPT_DIR/data/icons/hicolor/scalable/apps/tar-installer.svg" "$HOME/.local/share/icons/hicolor/scalable/apps/"
 
 # 5. Update Caches
