@@ -5,8 +5,23 @@
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-orange.svg)](https://www.kernel.org/)
 [![Interface: GTK 3](https://img.shields.io/badge/GUI-GTK%203-blueviolet.svg)](https://www.gtk.org/)
 [![Poetry Managed](https://img.shields.io/badge/packaging-poetry-cyan.svg)](https://python-poetry.org/)
+[![GitHub Stars](https://img.shields.io/github/stars/moalmatry/tar-app-installer?style=flat&color=yellow)](https://github.com/moalmatry/tar-app-installer/stargazers)
 
 **Tar App Installer** is a native, modern Linux application and CLI tool that automatically extracts `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, and `.zip` archives, detects the main executable and icon, installs the files into your system, and seamlessly adds the application to your **Start Menu / App Launcher** and `$PATH`.
+
+---
+
+## 📌 Table of Contents
+- [The Problem It Solves](#-the-problem-it-solves)
+- [Key Features](#-key-features)
+- [How It Works](#-how-it-works)
+- [Supported Archive Formats](#-supported-archive-formats)
+- [Quick Installation](#-quick-installation)
+- [Graphical Interface (GUI)](#%EF%B8%8F-graphical-interface-gui)
+- [Command-Line Interface (CLI)](#-command-line-interface-cli)
+- [More Linux Projects](#-more-linux-projects)
+- [Uninstallation](#%EF%B8%8F-uninstallation)
+- [License](#-license)
 
 ---
 
@@ -49,6 +64,50 @@ When you download portable Linux software as a `.tar.gz` archive (such as Blende
   * Installs into user space (`~/.local/share/tar-apps`) without needing root or `sudo` permissions (system-wide `/opt` mode is also available).
 * **📁 File Manager Integration:**
   * Associates with archive MIME types so you can right-click any `.tar.gz` in Nautilus / Files and choose **"Open With -> Tar App Installer"**.
+
+---
+
+## 🔍 How It Works
+
+```mermaid
+flowchart TD
+    A["📦 Input Archive (.tar.gz, .tar.xz, .zip)"] -->|"GUI / CLI / 'Open With'"| B["🛡️ Safe Extraction Sandbox"]
+    B -->|"Zip-Slip & Path Traversal Guard"| C["🔍 Smart Detection Engine"]
+    
+    subgraph Detection ["Smart Detection Engine"]
+        C --> D["⚡ Binary Identification<br/>(ELF Magic Header + Shebang Parser)"]
+        C --> E["🖼️ Icon Discovery<br/>(SVG / High-Res PNG or Vector Lettermark)"]
+        C --> F["📄 Metadata Parsing<br/>(Internal .desktop, Name & Semantic Version)"]
+    end
+    
+    Detection --> G["📁 Install Coordinator"]
+    G --> H["📂 App Directory → ~/.local/share/tar-apps/&lt;app&gt;"]
+    G --> I["🚀 Desktop Entry → ~/.local/share/applications/&lt;app&gt;.desktop"]
+    G --> J["💻 CLI Symlink → ~/.local/bin/&lt;app&gt;"]
+    G --> K["📋 Registry Record → ~/.local/share/tar-apps/registry.json"]
+    
+    G --> L["🔄 Cache Refresh (update-desktop-database & gtk-update-icon-cache)"]
+    L --> M["🎉 App available immediately in Start Menu & Terminal!"]
+```
+
+### 1. Safe Extraction & Archive Handling
+When you open an archive via the CLI, GUI, or file manager context menu, `tar-app-installer` decompresses the archive into an isolated temporary workspace. Strict **Zip-Slip and directory traversal protections** are enforced to prevent malicious archives from extracting files outside the sandbox.
+
+### 2. Smart Binary & Icon Detection
+Portable Linux software rarely follows uniform folder hierarchies. The detection engine identifies the true application entry point using a multi-step heuristic:
+* **ELF & Shebang Validation:** Scans candidate files for valid ELF headers (`\x7fELF`) or script shebangs (`#!/bin/...`), automatically ignoring shared libraries (`lib*.so`), crashpad handlers, and helper sandboxes.
+* **Icon Discovery & Generation:** Searches for embedded high-resolution `.svg` and `.png` icons. If no icon exists, it generates a clean vector lettermark SVG icon dynamically from the application's initial letter.
+* **Internal Desktop Specification:** If the archive already contains a `.desktop` file, its name, generic comments, and FreeDesktop categories are automatically parsed and adapted.
+
+### 3. Desktop & System Integration
+The installer deploys the application cleanly into user space without requiring `sudo` or root permissions:
+1. **Application Files:** Safely moved into permanent user storage at `~/.local/share/tar-apps/<app>/` (or `/opt/<app>/` if run system-wide).
+2. **Start Menu Launcher:** Generates a standard FreeDesktop `.desktop` file in `~/.local/share/applications/<app>.desktop`.
+3. **Terminal Access:** Symlinks the primary executable to `~/.local/bin/<app>` so you can launch it directly from any shell.
+4. **Desktop Database Invalidation:** Runs `update-desktop-database` and `gtk-update-icon-cache` so the application shows up instantly in your application menu (GNOME, Zorin OS, KDE Plasma, XFCE).
+
+### 4. Registry & Clean Lifecycle Management
+Every installation is cataloged in `~/.local/share/tar-apps/registry.json`. This tracks installed versions, file sizes, creation dates, and symlinks, allowing you to view, launch, or cleanly uninstall any application with a single click or command.
 
 ---
 
@@ -164,6 +223,16 @@ To cleanly remove Tar App Installer itself from your system:
 cd tar-app-installer
 ./uninstall.sh
 ```
+
+---
+
+## 🌐 More Linux Projects
+
+Explore other native Linux tools by the author:
+
+* ⚡ **[dell-gmode](https://github.com/moalmatry/dell-gmode)** — Native Linux daemon and CLI utility for Dell G15 / G16 laptops to enable the **Fn+F9 Game Shift (G-Mode)** hardware key, 100% maximum fan cooling boost via Alienware WMAX ACPI, and CPU/GPU performance power profiles.
+* 🌈 **[dell-g15-rgb](https://github.com/moalmatry/dell-g15-rgb)** — Native Linux driver, CLI, and GTK 3 GUI for Dell G15 & Alienware laptops to control AlienFX 4-Zone RGB keyboard lighting, custom hardware effects, brightness, and permanently fix the "stuck on red" backlight issue.
+* 🔋 **[dell-power-manager](https://github.com/moalmatry/dell-power-manager)** — Native Linux GUI & CLI to limit battery charging thresholds (50%, 80%), manage SMBIOS power profiles, and protect battery health on Dell laptops.
 
 ---
 
