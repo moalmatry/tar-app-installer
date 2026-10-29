@@ -50,12 +50,16 @@ fi
 echo "[3/5] Setting up global executables in /usr/local/bin..."
 sudo ln -sf "$VENV_PATH/bin/tar-installer" /usr/local/bin/tar-installer
 sudo ln -sf "$VENV_PATH/bin/tar-installer-gui" /usr/local/bin/tar-installer-gui
-sudo chmod +x /usr/local/bin/tar-installer /usr/local/bin/tar-installer-gui
+sudo ln -sf "$VENV_PATH/bin/tar-installer" /usr/local/bin/tar-app-installer
+sudo ln -sf "$VENV_PATH/bin/tar-installer-gui" /usr/local/bin/tar-app-installer-gui
+sudo chmod +x /usr/local/bin/tar-installer /usr/local/bin/tar-installer-gui /usr/local/bin/tar-app-installer /usr/local/bin/tar-app-installer-gui
 
 # Also ensure user bin has them
 mkdir -p "$HOME/.local/bin"
 ln -sf "$VENV_PATH/bin/tar-installer" "$HOME/.local/bin/tar-installer"
 ln -sf "$VENV_PATH/bin/tar-installer-gui" "$HOME/.local/bin/tar-installer-gui"
+ln -sf "$VENV_PATH/bin/tar-installer" "$HOME/.local/bin/tar-app-installer"
+ln -sf "$VENV_PATH/bin/tar-installer-gui" "$HOME/.local/bin/tar-app-installer-gui"
 
 # 4. Install Desktop Launcher and Icon
 echo "[4/5] Installing desktop launcher and app icon..."

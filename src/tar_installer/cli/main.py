@@ -10,7 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from ..core.archive import extract_archive, is_archive, ArchiveError
+from ..core.archive import extract_archive, is_archive, parse_archive_argument, ArchiveError
 from ..core.detector import detect_app, clean_slug
 from ..core.installer import AppInstaller
 from ..core.models import InstallConfig
@@ -27,9 +27,9 @@ def format_size(bytes_val: int) -> str:
 
 
 def cmd_install(args: argparse.Namespace):
-    archive_path = Path(args.archive).resolve()
-    if not archive_path.is_file():
-        print(f"[✗] Error: File '{archive_path}' does not exist.", file=sys.stderr)
+    archive_path = parse_archive_argument(args.archive)
+    if not archive_path or not archive_path.is_file():
+        print(f"[✗] Error: File '{args.archive}' does not exist or is not a valid file.", file=sys.stderr)
         sys.exit(1)
 
     if not is_archive(archive_path):
@@ -251,8 +251,9 @@ def main():
 
     # If first argument looks like an archive file without subcommand, route to install
     if len(sys.argv) > 1 and sys.argv[1] not in ("-h", "--help", "install", "list", "remove", "uninstall", "info", "launch", "run", "gui"):
-        potential_file = Path(sys.argv[1])
-        if potential_file.is_file() and is_archive(potential_file):
+        potential_file = parse_archive_argument(sys.argv[1])
+        if potential_file and is_archive(potential_file):
+            sys.argv[1] = str(potential_file)
             sys.argv.insert(1, "install")
 
     args = parser.parse_args()

@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -14,7 +15,7 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import Gtk, Gdk, GLib, GdkPixbuf
 
-from ..core.archive import extract_archive, is_archive, ArchiveError
+from ..core.archive import extract_archive, is_archive, parse_archive_argument, ArchiveError
 from ..core.detector import detect_app, clean_slug
 from ..core.installer import AppInstaller, generate_fallback_svg_icon
 from ..core.models import DetectedApp, InstallConfig, InstalledApp
@@ -102,7 +103,18 @@ def format_size(bytes_val: int) -> str:
 
 
 class TarInstallerWindow(Gtk.Window):
-    def __init__(self, initial_archive: str | None = None):
+    @staticmethod
+    def _show_section(widget: Gtk.Widget):
+        widget.set_no_show_all(False)
+        widget.show_all()
+        widget.set_no_show_all(True)
+
+    @staticmethod
+    def _hide_section(widget: Gtk.Widget):
+        widget.set_no_show_all(True)
+        widget.hide()
+
+    def __init__(self, initial_archive: Path | str | None = None):
         super().__init__(title="Tar App Installer")
         self.set_default_size(580, 680)
         self.set_position(Gtk.WindowPosition.CENTER)
@@ -120,8 +132,26 @@ class TarInstallerWindow(Gtk.Window):
         self._build_header()
         self._build_layout()
 
-        if initial_archive and Path(initial_archive).is_file():
-            GLib.idle_add(self._load_archive, Path(initial_archive))
+        # Setup Drag and Drop on window
+        self.drag_dest_set(Gtk.DestDefaults.ALL, [], Gdk.DragAction.COPY)
+        self.drag_dest_add_uri_targets()
+        self.connect("drag-data-received", self._on_drag_data_received)
+
+        target = parse_archive_argument(initial_archive) if initial_archive else None
+        if target and is_archive(target):
+            GLib.idle_add(self._load_archive, target)
+
+    def _on_drag_data_received(self, _widget, context, _x, _y, data, _info, time):
+        uris = data.get_uris()
+        if uris:
+            for uri in uris:
+                target = parse_archive_argument(uri)
+                if target and is_archive(target):
+                    self.stack.set_visible_child_name("install")
+                    self._load_archive(target)
+                    context.finish(True, False, time)
+                    return
+        context.finish(False, False, time)
 
     def _apply_css(self):
         css_provider = Gtk.CssProvider()
@@ -371,10 +401,11 @@ class TarInstallerWindow(Gtk.Window):
             dialog.destroy()
 
     def _load_archive(self, archive_path: Path):
+        self.stack.set_visible_child_name("install")
         self.current_archive = archive_path
-        self.card_success.hide()
-        self.card_meta.hide()
-        self.box_progress.show()
+        self._hide_section(self.card_success)
+        self._hide_section(self.card_meta)
+        self._show_section(self.box_progress)
         self.lbl_progress.set_text(f"Extracting & analyzing {archive_path.name}...")
         self.progress_bar.pulse()
 
@@ -401,7 +432,7 @@ class TarInstallerWindow(Gtk.Window):
     def _on_archive_analyzed(self, temp_dir: tempfile.TemporaryDirectory, detected: DetectedApp):
         self.temp_dir = temp_dir
         self.detected_app = detected
-        self.box_progress.hide()
+        self._hide_section(self.box_progress)
 
         # Populate form
         self.entry_name.set_text(detected.name)
@@ -430,10 +461,10 @@ class TarInstallerWindow(Gtk.Window):
         self.selected_icon_path = detected.selected_icon
         self._update_icon_display()
 
-        self.card_meta.show()
+        self._show_section(self.card_meta)
 
     def _on_archive_error(self, error_msg: str):
-        self.box_progress.hide()
+        self._hide_section(self.box_progress)
         dialog = Gtk.MessageDialog(
             transient_for=self,
             flags=0,
@@ -523,7 +554,7 @@ class TarInstallerWindow(Gtk.Window):
         self.last_installed_app = installed
         self.btn_install_action.set_sensitive(True)
         self.btn_install_action.set_label("🚀 Install Application")
-        self.card_meta.hide()
+        self._hide_section(self.card_meta)
 
         self.lbl_success_details.set_markup(
             f"<b>{installed.name}</b> is ready to use!\n\n"
@@ -531,7 +562,7 @@ class TarInstallerWindow(Gtk.Window):
             f"• <b>Terminal Command:</b> <code>{Path(installed.symlink_path).name}</code>\n"
             f"• <b>Location:</b> {installed.install_dir} ({format_size(installed.size_bytes)})"
         )
-        self.card_success.show()
+        self._show_section(self.card_success)
         self._refresh_installed_list()
 
     def _on_install_failure(self, err_msg: str):
@@ -666,8 +697,15 @@ class TarInstallerWindow(Gtk.Window):
             self._refresh_installed_list()
 
 
-def main(archive_path: str | None = None):
-    app = TarInstallerWindow(initial_archive=archive_path)
+def main(archive_path: str | Path | None = None):
+    if archive_path is None and len(sys.argv) > 1:
+        for arg in sys.argv[1:]:
+            if not arg.startswith("-"):
+                archive_path = arg
+                break
+
+    resolved = parse_archive_argument(archive_path) if archive_path else None
+    app = TarInstallerWindow(initial_archive=resolved)
     app.connect("destroy", Gtk.main_quit)
     app.show_all()
     Gtk.main()

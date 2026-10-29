@@ -3,9 +3,31 @@ from __future__ import annotations
 
 import os
 import tarfile
+import urllib.parse
 import zipfile
 from pathlib import Path
 from typing import Callable
+
+
+def parse_archive_argument(arg: str | Path | None) -> Path | None:
+    """Parses a file path or file:// URI into a validated Path object."""
+    if not arg:
+        return None
+    raw = str(arg).strip().strip("'\"")
+    if not raw:
+        return None
+
+    if raw.startswith("file://"):
+        parsed = urllib.parse.urlparse(raw)
+        path_str = urllib.parse.unquote(parsed.path)
+    else:
+        path_str = raw
+
+    try:
+        p = Path(path_str).expanduser().resolve()
+        return p if p.is_file() else None
+    except Exception:
+        return None
 
 
 class ArchiveError(Exception):

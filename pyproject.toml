@@ -43,6 +43,8 @@ Issues = "https://github.com/moalmatry/tar-app-installer/issues"
 [project.scripts]
 tar-installer = "tar_installer.cli.main:main"
 tar-installer-gui = "tar_installer.gui.app:main"
+tar-app-installer = "tar_installer.cli.main:main"
+tar-app-installer-gui = "tar_installer.gui.app:main"
 
 [tool.poetry]
 packages = [{ include = "tar_installer", from = "src" }]
